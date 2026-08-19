@@ -2,8 +2,23 @@ from flask import Flask, request, jsonify
 import joblib
 import json
 import os
+from functools import wraps
 
 app = Flask(__name__)
+
+# ── API key auth ──────────────────────────────────────────────────────────────
+# This Space/service is reachable by anyone on the internet, so every route
+# except /health requires a shared secret sent as the X-API-Key header.
+# Set the API_KEY env var on Render (or leave unset to disable auth locally).
+API_KEY = os.environ.get('API_KEY')
+
+def require_api_key(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if API_KEY and request.headers.get('X-API-Key') != API_KEY:
+            return jsonify({'error': 'Unauthorized'}), 401
+        return fn(*args, **kwargs)
+    return wrapper
 
 # ── Load model and metadata on startup ────────────────────────────────────────
 MODEL_PATH    = os.path.join(os.path.dirname(__file__), 'model', 'rf_model.pkl')
@@ -32,6 +47,7 @@ def health():
 
 # ── Single prediction ──────────────────────────────────────────────────────────
 @app.route('/predict', methods=['POST'])
+@require_api_key
 def predict():
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 503
@@ -68,6 +84,7 @@ def predict():
 
 # ── Batch prediction ───────────────────────────────────────────────────────────
 @app.route('/predict/batch', methods=['POST'])
+@require_api_key
 def predict_batch():
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 503
@@ -111,6 +128,7 @@ def predict_batch():
 
 # ── Model info ─────────────────────────────────────────────────────────────────
 @app.route('/model/info', methods=['GET'])
+@require_api_key
 def model_info():
     return jsonify(metadata)
 
